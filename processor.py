@@ -1,4 +1,4 @@
-import os, sys
+import os, sys, shutil
 import subprocess
 import time
 
@@ -18,6 +18,7 @@ if __name__ == "__main__":
     target_img = ants.image_read(f"{shared_drive_path}/models/sub-{participant:02}/target_img.nii.gz")
 
     # Watch output directory for dicom files
+    source_dir = os.path.join(shared_drive_path, "data", "source")
     dicom_dir = os.path.join(shared_drive_path, "data", "dicom")#"data/dicom"
     nifti_dir = os.path.join(shared_drive_path, "data", "nifti")
     aligned_dir = os.path.join(shared_drive_path, "data", "aligned")
@@ -34,10 +35,10 @@ if __name__ == "__main__":
 
         dicoms = []
 
-        for folder in os.listdir(dicom_dir):
-            contents = os.listdir(os.path.join(dicom_dir, folder))
-            if contents:
-                dicoms.append(folder)
+        for file in os.listdir(source_dir):
+            # contents = os.listdir(os.path.join(source_dir, folder))
+            # if contents:
+            dicoms.append(file)
 
 
         s = set(processed_dcms)
@@ -47,11 +48,17 @@ if __name__ == "__main__":
 
         if unprocessed_dcms:
             # print(unprocessed_dcms)
-            for folder in unprocessed_dcms:
+            for file in unprocessed_dcms:
 
                 # dicom_file = os.listdir(os.path.join(dicom_dir, folder))
-                path = os.path.join(dicom_dir, folder)
-                dicom_file = os.path.join(path, os.listdir(path)[0])
+                
+                source_path = os.path.join(source_dir, file)
+                dest_folder = os.path.join(dicom_dir, f"dcm_{len(processed_dcms):04}")
+                os.makedirs(dest_folder)
+
+                shutil.copy(source_path, dest_folder)
+
+                dicom_file = os.path.join(dest_folder, file)
                 # print(dicom_file)
 
                 output_filename = f"img_{len(processed_dcms):04}"
@@ -87,7 +94,7 @@ if __name__ == "__main__":
 
                 ants.image_write(areg['warpedmovout'], save_filename)
 
-                processed_dcms.append(folder)
+                processed_dcms.append(file)
 
 
         t2 = time.time()
