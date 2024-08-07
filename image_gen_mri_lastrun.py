@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 This experiment was created using PsychoPy3 Experiment Builder (v2023.2.3),
-    on July 24, 2024, at 15:53
+    on July 30, 2024, at 11:46
 If you publish work using this script the most relevant publication is:
 
     Peirce J, Gray JR, Simpson S, MacAskill M, Höchenberger R, Sogo H, Kastman E, Lindeløv JK. (2019) 
@@ -208,7 +208,7 @@ def setupWindow(expInfo=None, win=None):
     if win is None:
         # if not given a window to setup, make one
         win = visual.Window(
-            size=[1536, 864], fullscr=False, screen=0,
+            size=[1536, 864], fullscr=True, screen=0,
             winType='pyglet', allowStencil=False,
             monitor='testMonitor', color=[0,0,0], colorSpace='rgb',
             backgroundImage='', backgroundFit='none',
@@ -225,7 +225,7 @@ def setupWindow(expInfo=None, win=None):
         win.backgroundImage = ''
         win.backgroundFit = 'none'
         win.units = 'height'
-    win.mouseVisible = True
+    win.mouseVisible = False
     win.hideMessage()
     return win
 
@@ -425,10 +425,17 @@ def run(expInfo, thisExp, win, inputs, globalClock=None, thisSession=None):
         win=win,
         name='image', 
         image='default.png', mask=None, anchor='center',
-        ori=0.0, pos=(0, 0), size=(0.75, 0.75),
+        ori=0.0, pos=(0, 0), size=(0.9, 0.9),
         color=[1,1,1], colorSpace='rgb', opacity=None,
         flipHoriz=False, flipVert=False,
         texRes=128.0, interpolate=True, depth=0.0)
+    fixation_2 = visual.TextStim(win=win, name='fixation_2',
+        text='+',
+        font='Open Sans',
+        pos=(0, 0), height=0.05, wrapWidth=None, ori=0.0, 
+        color='black', colorSpace='rgb', opacity=None, 
+        languageStyle='LTR',
+        depth=-2.0);
     
     # --- Initialize components for Routine "washout" ---
     text = visual.TextStim(win=win, name='text',
@@ -576,8 +583,8 @@ def run(expInfo, thisExp, win, inputs, globalClock=None, thisSession=None):
     thisExp.nextEntry()
     # Run 'End Routine' code from start_timer
     # Start manager subprocess
-    manager = subprocess.Popen(['python', 'manager.py', shared_drive_path, str(participant), str(run)])#, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    atexit.register(os.kill, manager.pid, signal.CTRL_C_EVENT)
+    ##manager = subprocess.Popen(['python', 'manager.py', shared_drive_path, str(participant), str(run)])#, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    ##atexit.register(os.kill, manager.pid, signal.CTRL_C_EVENT)
     # the Routine "start_text" was not non-slip safe, so reset the non-slip timer
     routineTimer.reset()
     
@@ -772,7 +779,7 @@ def run(expInfo, thisExp, win, inputs, globalClock=None, thisSession=None):
             
             onset_times[trials.thisN] = timer.getTime()
             # keep track of which components have finished
-            trialComponents = [image]
+            trialComponents = [image, fixation_2]
             for thisComponent in trialComponents:
                 thisComponent.tStart = None
                 thisComponent.tStop = None
@@ -787,7 +794,7 @@ def run(expInfo, thisExp, win, inputs, globalClock=None, thisSession=None):
             
             # --- Run Routine "trial" ---
             routineForceEnded = not continueRoutine
-            while continueRoutine and routineTimer.getTime() < 3.0:
+            while continueRoutine and routineTimer.getTime() < 4.0:
                 # get current time
                 t = routineTimer.getTime()
                 tThisFlip = win.getFutureFlipTime(clock=routineTimer)
@@ -828,6 +835,39 @@ def run(expInfo, thisExp, win, inputs, globalClock=None, thisSession=None):
                         image.status = FINISHED
                         image.setAutoDraw(False)
                 
+                # *fixation_2* updates
+                
+                # if fixation_2 is starting this frame...
+                if fixation_2.status == NOT_STARTED and tThisFlip >= 3.0-frameTolerance:
+                    # keep track of start time/frame for later
+                    fixation_2.frameNStart = frameN  # exact frame index
+                    fixation_2.tStart = t  # local t and not account for scr refresh
+                    fixation_2.tStartRefresh = tThisFlipGlobal  # on global time
+                    win.timeOnFlip(fixation_2, 'tStartRefresh')  # time at next scr refresh
+                    # add timestamp to datafile
+                    thisExp.timestampOnFlip(win, 'fixation_2.started')
+                    # update status
+                    fixation_2.status = STARTED
+                    fixation_2.setAutoDraw(True)
+                
+                # if fixation_2 is active this frame...
+                if fixation_2.status == STARTED:
+                    # update params
+                    pass
+                
+                # if fixation_2 is stopping this frame...
+                if fixation_2.status == STARTED:
+                    # is it time to stop? (based on global clock, using actual start)
+                    if tThisFlipGlobal > fixation_2.tStartRefresh + 1.0-frameTolerance:
+                        # keep track of stop time/frame for later
+                        fixation_2.tStop = t  # not accounting for scr refresh
+                        fixation_2.frameNStop = frameN  # exact frame index
+                        # add timestamp to datafile
+                        thisExp.timestampOnFlip(win, 'fixation_2.stopped')
+                        # update status
+                        fixation_2.status = FINISHED
+                        fixation_2.setAutoDraw(False)
+                
                 # check for quit (typically the Esc key)
                 if defaultKeyboard.getKeys(keyList=["escape"]):
                     thisExp.status = FINISHED
@@ -858,7 +898,7 @@ def run(expInfo, thisExp, win, inputs, globalClock=None, thisSession=None):
             if routineForceEnded:
                 routineTimer.reset()
             else:
-                routineTimer.addTime(-3.000000)
+                routineTimer.addTime(-4.000000)
             
             # --- Prepare to start Routine "washout" ---
             continueRoutine = True
