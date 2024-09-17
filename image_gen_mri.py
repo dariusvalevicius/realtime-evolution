@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 This experiment was created using PsychoPy3 Experiment Builder (v2023.2.3),
-    on July 30, 2024, at 12:32
+    on September 17, 2024, at 14:54
 If you publish work using this script the most relevant publication is:
 
     Peirce J, Gray JR, Simpson S, MacAskill M, Höchenberger R, Sogo H, Kastman E, Lindeløv JK. (2019) 
@@ -90,8 +90,9 @@ expInfo = {
     'participant': f"{randint(0, 999999):06.0f}",
     'max_iters': '10',
     'pop_size': '10',
+    'session': '999',
     'run': '999',
-    'shared_drive': 'shared_drive',
+    'shared_drive': '/MRI-RT/Users/TD_Lab/Desktop/Realtime/shared_drive',
     'date': data.getDateStr(),  # add a simple timestamp
     'expName': expName,
     'psychopyVersion': psychopyVersion,
@@ -371,7 +372,7 @@ def run(expInfo, thisExp, win, inputs, globalClock=None, thisSession=None):
         pos=(0, 0), height=0.05, wrapWidth=None, ori=0.0, 
         color='black', colorSpace='rgb', opacity=None, 
         languageStyle='LTR',
-        depth=0.0);
+        flipHoriz=True, depth=0.0);
     key_resp = keyboard.Keyboard()
     
     # --- Initialize components for Routine "generating" ---
@@ -389,10 +390,12 @@ def run(expInfo, thisExp, win, inputs, globalClock=None, thisSession=None):
     participant = int(expInfo['participant'])
     global run
     run = int(expInfo['run'])
+    global ses
+    ses = int(expInfo['session'])
     shared_drive_path = expInfo['shared_drive']
     
     global output_path
-    output_path = f"{shared_drive_path}/images/sub-{participant:02}/run-{run}"
+    output_path = f"{shared_drive_path}/images/sub-{participant:02}/ses-{ses:02}/run-{run}"
     
     if not os.path.exists(output_path):
         os.makedirs(output_path)
@@ -404,7 +407,7 @@ def run(expInfo, thisExp, win, inputs, globalClock=None, thisSession=None):
     global mutation_size
     mutation_size = 0.3
     global vec_size
-    vec_size = 80
+    vec_size = 100
     global embedding_size
     embedding_size = 1024
     
@@ -427,7 +430,7 @@ def run(expInfo, thisExp, win, inputs, globalClock=None, thisSession=None):
         image='default.png', mask=None, anchor='center',
         ori=0.0, pos=(0, 0), size=(0.9, 0.9),
         color=[1,1,1], colorSpace='rgb', opacity=None,
-        flipHoriz=False, flipVert=False,
+        flipHoriz=True, flipVert=False,
         texRes=128.0, interpolate=True, depth=0.0)
     fixation_2 = visual.TextStim(win=win, name='fixation_2',
         text='+',
@@ -462,7 +465,7 @@ def run(expInfo, thisExp, win, inputs, globalClock=None, thisSession=None):
         pos=(0, 0), height=0.05, wrapWidth=None, ori=0.0, 
         color='black', colorSpace='rgb', opacity=None, 
         languageStyle='LTR',
-        depth=0.0);
+        flipHoriz=True, depth=0.0);
     
     # create some handy timers
     if globalClock is None:
