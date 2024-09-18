@@ -133,7 +133,7 @@ def create_4d_img(file_names):
 
     return new_img
 
-def get_scores(dir, onset_times, masker, pipeline, model):
+def get_scores(dir, onset_times, masker=None, pipeline=None, model=None, method="logistic"):
     '''
     Evaluates a set of frames in order to get a list of predicted scores for the target.
         Inputs:
@@ -142,6 +142,8 @@ def get_scores(dir, onset_times, masker, pipeline, model):
             masker: NiftiMasker model to convert 4D data to a 2D matrix.
             pipeline: PCA + Scaler pipeline to convert masked data into reduced matrix.
             model: Logistic regression model for predicting scores from dimension-reduced data.
+            beta_map: Weight volume to be used for Pearson-type decoding.
+            method: One of ["logistic", "pearson"]. Specified what type of model is being used.
         Outputs:
             y_pred: Predicted scores on target measure.
     '''
@@ -174,9 +176,22 @@ def get_scores(dir, onset_times, masker, pipeline, model):
         peak_frames[j,:] = fmri_avg
 
 
-    X = pipeline.transform(peak_frames)
 
-    y_pred = model.predict_proba(X)[:,1]
+    if method == "logistic":
+
+        X = pipeline.transform(peak_frames)
+        y_pred = model.predict_proba(X)[:,1]
+
+    elif method == "pearson":
+
+        y_pred = []
+
+        for i in range(peak_frames.shape[0]):
+            r = np.corrcoef(peak_frames[i,:], model)[0,1]
+            y_pred.append(r)
+
+        y_pred = np.array(y_pred)
+
     return y_pred
 
 
@@ -207,6 +222,7 @@ if __name__ == "__main__":
     root_dir = sys.argv[2]
     participant = int(sys.argv[3])
     target = sys.argv[4]
+    diffusion_steps = int(sys.argv[5])
 
     embeddings_files_complete = []
     
@@ -253,7 +269,7 @@ if __name__ == "__main__":
             for i in range(embeddings.shape[0]):
 
                 filename = os.path.join(output_path, f"img_{i:02}.png")
-                generate_image(pipe, embeddings[i,:], filename, diffusion_steps=5) ## Edit diffusion steps based on performance
+                generate_image(pipe, embeddings[i,:], filename, diffusion_steps=diffusion_steps) ## Edit diffusion steps based on performance
                 finished[i] = 1
                 np.savetxt(f"{output_path}/status.txt", finished, delimiter=',')
 
@@ -289,7 +305,13 @@ if __name__ == "__main__":
             onset_times = np.loadtxt(difference_list[0], delimiter=',')
             print(onset_times)
 
-            fitness = get_scores(nifti_dir, onset_times, masker, pipeline, model)
+            if isinstance(model, np.ndarray):
+                fitness = get_scores(nifti_dir, onset_times, masker=masker, model=model, method="pearson")
+            elif isinstance(model, LogisticRegression):
+                fitness = get_scores(nifti_dir, onset_times, masker=masker, pipeline=pipeline, model=model, method="logistic")
+            else:
+                raise Exception("Invalid model type: Must be np.ndarray or LogisticRegression")
+
             np.savetxt(f"{output_path}/fitness.txt", fitness, delimiter=',')
 
             onset_files_complete.append(difference_list[0])

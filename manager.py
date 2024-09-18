@@ -35,6 +35,8 @@ if __name__ == "__main__":
     parser.add_argument('target', type=str, help="Evolution target. Example options:\n'fear'\n'cute'\n'disgust'\n'neurosynth'")
     parser.add_argument('--simulate', action='store_true', help="Is this run being simulated offline?", required=False)
     parser.add_argument('--shared_drive_path', type=str, help="Alternative shared drive path.", required=False)
+    parser.add_argument('--diffusion_steps', type=int, default=25, help="Number of diffusion steps per image", required=False)
+
     
     args = parser.parse_args()
 
@@ -42,6 +44,7 @@ if __name__ == "__main__":
     ses = args.session
     run = args.run
     target = args.target
+    diffusion_steps = args.diffusion_steps
 
     # Set paths
     if args.shared_drive_path:
@@ -69,7 +72,7 @@ if __name__ == "__main__":
     
 
     # Start collector subprocess
-    collector = subprocess.Popen(['python', 'collector.py', shared_drive_path, output_path, str(participant), target])#, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    collector = subprocess.Popen(['python', 'collector.py', shared_drive_path, output_path, str(participant), target, str(diffusion_steps)])#, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     atexit.register(os.kill, collector.pid, signal.CTRL_C_EVENT)
 
     while(True):
