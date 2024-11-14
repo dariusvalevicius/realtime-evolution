@@ -14,6 +14,8 @@ from nilearn.maskers import NiftiMasker
 from sklearn.linear_model import LogisticRegression
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from sklearn.pipeline import Pipeline
 
 def generate_image(pipe, embedding, image_name, diffusion_steps=21):
     '''
@@ -133,7 +135,7 @@ def create_4d_img(file_names):
 
     return new_img
 
-def get_scores(dir, onset_times, masker=None, pipeline=None, model=None, method="logistic"):
+def get_scores(dir, onset_times, masker=None, model=None, method=None, target_class=None):
     '''
     Evaluates a set of frames in order to get a list of predicted scores for the target.
         Inputs:
@@ -150,7 +152,7 @@ def get_scores(dir, onset_times, masker=None, pipeline=None, model=None, method=
 
     # Get nifti image for onset - 5s to last onset + 10s
     start_time = onset_times[0]
-    end_time = onset_times[-1] + 10
+    end_time = onset_times[-1] + 8
 
     list = get_niftis(dir, start_time, end_time)
 
@@ -177,18 +179,17 @@ def get_scores(dir, onset_times, masker=None, pipeline=None, model=None, method=
 
 
 
-    if method == "logistic":
+    if method == "pipeline":
 
-        X = pipeline.transform(peak_frames)
-        y_pred = model.predict_proba(X)[:,1]
+        y_pred = model.predict_log_proba(peak_frames)[:,target_class]
 
     elif method == "pearson":
 
         y_pred = []
 
         for i in range(peak_frames.shape[0]):
-            r = np.corrcoef(peak_frames[i,:], model)[0,1]
-            y_pred.append(r)
+            dot_product = np.dot(peak_frames[i,:], model)
+            y_pred.append(dot_product)
 
         y_pred = np.array(y_pred)
 
@@ -231,14 +232,19 @@ if __name__ == "__main__":
     nifti_dir = os.path.join(shared_drive_path, "data", "aligned")
 
 
-    with open(f"{shared_drive_path}/models/sub-{participant:02}/masker_model.pkl", "rb") as f:
+    with open(f"{shared_drive_path}/models/sub-{participant:02}/masker.pkl", "rb") as f:
         masker = pickle.load(f)
-
-    with open(f"{shared_drive_path}/models/sub-{participant:02}/pipeline_model.pkl", "rb") as f:
-        pipeline = pickle.load(f)
 
     with open(f"{shared_drive_path}/models/sub-{participant:02}/{target}_model.pkl", "rb") as f:
         model = pickle.load(f)
+
+
+    ## Define random target class
+    if isinstance(model, Pipeline):
+        target_class = np.random.randint(0,20)
+        with open(f"{root_dir}/target_class.txt", 'w') as f:
+            f.write(f"target_class\n{target_class}")
+
 
     while(True):
     
@@ -307,10 +313,10 @@ if __name__ == "__main__":
 
             if isinstance(model, np.ndarray):
                 fitness = get_scores(nifti_dir, onset_times, masker=masker, model=model, method="pearson")
-            elif isinstance(model, LogisticRegression):
-                fitness = get_scores(nifti_dir, onset_times, masker=masker, pipeline=pipeline, model=model, method="logistic")
+            elif isinstance(model, Pipeline):
+                fitness = get_scores(nifti_dir, onset_times, masker=masker, model=model, method="pipeline", target_class=target_class)
             else:
-                raise Exception("Invalid model type: Must be np.ndarray or LogisticRegression")
+                raise Exception("Invalid model type: Must be np.ndarray or Pipeline")
 
             np.savetxt(f"{output_path}/fitness.txt", fitness, delimiter=',')
 
