@@ -1,6 +1,6 @@
-archive/*
-shared_drive/data/*/*
-shared_drive/images/*
-psychopy_output/*
+archive
+shared_drive/data
+shared_drive/images
+psychopy/psychopy_output
 __pycache__
 testing
