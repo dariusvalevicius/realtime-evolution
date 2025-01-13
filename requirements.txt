@@ -8,3 +8,4 @@ antspyx
 nibabel
 nilearn
 dcm2niix
+gooey

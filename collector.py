@@ -1,13 +1,16 @@
 import torch
 import numpy as np
 from diffusers import StableUnCLIPImg2ImgPipeline
+from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 import sys
 import os
 import time
+from PIL import Image
 
 import re
 
 import pickle
+import json
 
 import nibabel as nib
 from nilearn.maskers import NiftiMasker
@@ -46,7 +49,32 @@ def prep_model(model_path):
         model_path, torch_dtype=torch.float16).to('cuda')
 
     return pipe
+
+def prep_vision_model(model_path):
+    # setting device on GPU if available, else CPU
+    # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # print('Using device:', device)
+
+    vision_model = CLIPVisionModelWithProjection.from_pretrained(os.path.join(model_path, "image_encoder")).to('cuda')
+    processor = CLIPImageProcessor.from_pretrained(os.path.join(model_path, "feature_extractor"))
+
+    return vision_model, processor
+
+def get_embed(path, vision_model, processor):
     
+    image = Image.open(path)
+    inputs = processor(text=None, images=image, return_tensors="pt")
+    # print(type(inputs['pixel_values']))
+
+    pixel_values = inputs['pixel_values'].to('cuda')
+
+    outputs = vision_model(pixel_values)
+
+    image_features = outputs.image_embeds
+    image_embeddings = torch.Tensor.cpu(image_features).detach().numpy()[0, :]
+    # print(image_features.size())
+
+    return image_embeddings
     
     
 def get_filtered_files(directory, start, end, pattern=r'^img_(\d{4}).nii.gz$'):
@@ -212,38 +240,44 @@ if __name__ == "__main__":
     which it uses to produce a new set of images.
     '''
 
-    model_path = r"D:\TDLab\pretrained_models\stable-diffusion-2-1-unclip"
-    if not os.path.exists(model_path):
-        print("Primary model path not found. Using secondary (offline) model path...")
-        model_path = "../../pretrained_models/stable-diffusion-2-1-unclip"
-
-    pipe = prep_model(model_path)
-
+    # Get arguments
     shared_drive_path = sys.argv[1]
     root_dir = sys.argv[2]
     participant = int(sys.argv[3])
     target = sys.argv[4]
-    diffusion_steps = int(sys.argv[5])
+    condition = sys.argv[5]
+
+    with open('config.json') as f:
+        config = json.load(f)
+
+    model_path = config["unclip_model_path"]
+    diffusion_steps = config["diffusion_steps"]
+
+    # Prepare generator model
+    pipe = prep_model(model_path)
+    # vision_model, processor = prep_vision_model(model_path)
+    vision_model = pipe.image_encoder
+    processor = pipe.feature_extractor
+
 
     embeddings_files_complete = []
-    
     onset_files_complete = []
-    
     nifti_dir = os.path.join(shared_drive_path, "data", "aligned")
 
+    if condition == "brain":
+        # Load fMRI masker and target model
+        with open(f"{shared_drive_path}/models/sub-{participant:02}/masker.pkl", "rb") as f:
+            masker = pickle.load(f)
 
-    with open(f"{shared_drive_path}/models/sub-{participant:02}/masker.pkl", "rb") as f:
-        masker = pickle.load(f)
-
-    with open(f"{shared_drive_path}/models/sub-{participant:02}/{target}_model.pkl", "rb") as f:
-        model = pickle.load(f)
+        with open(f"{shared_drive_path}/models/sub-{participant:02}/{target}_model.pkl", "rb") as f:
+            model = pickle.load(f)
 
 
-    ## Define random target class
-    if isinstance(model, Pipeline):
-        target_class = np.random.randint(0,20)
-        with open(f"{root_dir}/target_class.txt", 'w') as f:
-            f.write(f"target_class\n{target_class}")
+    # ## Define random target class
+    # if isinstance(model, Pipeline):
+    #     target_class = np.random.randint(0,20)
+    #     with open(f"{root_dir}/target_class.txt", 'w') as f:
+    #         f.write(f"target_class\n{target_class}")
 
 
     while(True):
@@ -254,7 +288,7 @@ if __name__ == "__main__":
         embeddings_paths = []
 
         # Search for new embeddings files
-        for dirpath, dirnames, filenames in os.walk(root_dir):
+        for dirpath, dirnames, filenames in os.walk(root_dir): # Cleaner way to do this?
             for filename in filenames:
                 if filename == "embeddings.txt":
                     full_path = os.path.join(dirpath, filename)
@@ -267,18 +301,35 @@ if __name__ == "__main__":
 
             output_path = embeddings_paths[-1]
             
-            time.sleep(1)
+            # time.sleep(1)
+            loaded = False
+            while not loaded:
+                try:
+                    embeddings = np.loadtxt(difference_list[0], delimiter=',')
+                    loaded = True
+                except:
+                    pass
 
-            embeddings = np.loadtxt(difference_list[0], delimiter=',')
+            embeddings_post = np.empty_like(embeddings)
             finished = np.zeros(embeddings.shape[0])
 
             for i in range(embeddings.shape[0]):
 
                 filename = os.path.join(output_path, f"img_{i:02}.png")
+                # Generate image
                 generate_image(pipe, embeddings[i,:], filename, diffusion_steps=diffusion_steps) ## Edit diffusion steps based on performance
+                # Read back embeddings
+                this_embedding_post = get_embed(filename, vision_model, processor)
+                embeddings_post[i,:] = this_embedding_post
+
+                # Set status to complete
                 finished[i] = 1
                 np.savetxt(f"{output_path}/status.txt", finished, delimiter=',')
 
+            # Save post embeddings
+            np.savetxt(f"{output_path}/embeddings_post.txt", embeddings_post, delimiter=',')
+
+            # Add to complete embeddings files
             embeddings_files_complete.append(difference_list[0])
 
         elif len(difference_list) > 1:
@@ -287,49 +338,54 @@ if __name__ == "__main__":
             pass
             
             
-        ## Evaluator loop
-            
-        onset_files = []
-        onset_paths = []
+        ## Evaluator loop            
+            onset_files = []
+            onset_paths = []
 
-        # Search for new embeddings files
-        for dirpath, dirnames, filenames in os.walk(root_dir):
-            for filename in filenames:
-                if filename == "onset_times.txt":
-                    full_path = os.path.join(dirpath, filename)
-                    onset_paths.append(dirpath)
-                    onset_files.append(full_path)
+            # Search for new embeddings files
+            for dirpath, dirnames, filenames in os.walk(root_dir):
+                for filename in filenames:
+                    if filename == "onset_times.txt":
+                        full_path = os.path.join(dirpath, filename)
+                        onset_paths.append(dirpath)
+                        onset_files.append(full_path)
 
-        difference_list = [file for file in onset_files if file not in onset_files_complete]
+            difference_list = [file for file in onset_files if file not in onset_files_complete]
 
-        if len(difference_list) == 1:
+            if len(difference_list) == 1:
 
-            print(f"Processing file: {difference_list[0]}")
-            output_path = onset_paths[-1]
-            time.sleep(1)
+                print(f"Processing file: {difference_list[0]}")
+                output_path = onset_paths[-1]
+                time.sleep(1)
 
-            onset_times = np.loadtxt(difference_list[0], delimiter=',')
-            print(onset_times)
+                onset_times = np.loadtxt(difference_list[0], delimiter=',')
+                print(onset_times)
 
-            if isinstance(model, np.ndarray):
-                fitness = get_scores(nifti_dir, onset_times, masker=masker, model=model, method="pearson")
-            elif isinstance(model, Pipeline):
-                fitness = get_scores(nifti_dir, onset_times, masker=masker, model=model, method="pipeline", target_class=target_class)
+
+                if condition == "brain":
+    
+                    if isinstance(model, np.ndarray):
+                        fitness = get_scores(nifti_dir, onset_times, masker=masker, model=model, method="pearson")
+                    # elif isinstance(model, Pipeline):
+                        # fitness = get_scores(nifti_dir, onset_times, masker=masker, model=model, method="pipeline", target_class=target_class)
+                    else:
+                        raise Exception("Invalid model type: Must be np.ndarray or Pipeline")
+
+                    np.savetxt(f"{output_path}/fitness.txt", fitness, delimiter=',')
+
+                else:
+                    print("Condition is: ratings. No processing needed this time.")
+
+                onset_files_complete.append(difference_list[0])
+                
+                if len(onset_files_complete) == 8:
+                    print("Run complete.")
+                    exit()
+
+            elif len(difference_list) > 1:
+                raise Exception("Too many onset files found!")
             else:
-                raise Exception("Invalid model type: Must be np.ndarray or Pipeline")
-
-            np.savetxt(f"{output_path}/fitness.txt", fitness, delimiter=',')
-
-            onset_files_complete.append(difference_list[0])
-            
-            if len(onset_files_complete) == 10:
-                print("Run complete.")
-                exit()
-
-        elif len(difference_list) > 1:
-            raise Exception("Too many onset files found!")
-        else:
-            pass
+                pass
 
         time.sleep(1)
 

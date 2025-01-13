@@ -1,0 +1,8 @@
+{
+    "max_iters": 8,
+    "pop_size": 8,
+    "mutation_size": 0.3,
+    "diffusion_steps": 10,
+    "shared_drive_path": "shared_drive",
+    "unclip_model_path": "../../pretrained_models/stable-diffusion-2-1-unclip"
+}

@@ -2,4 +2,5 @@ archive/*
 shared_drive/data/*/*
 shared_drive/images/*
 psychopy_output/*
-*pycache*
+__pycache__
+testing
