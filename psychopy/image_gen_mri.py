@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 This experiment was created using PsychoPy3 Experiment Builder (v2023.2.3),
-    on January 13, 2025, at 18:30
+    on January 14, 2025, at 08:00
 If you publish work using this script the most relevant publication is:
 
     Peirce J, Gray JR, Simpson S, MacAskill M, Höchenberger R, Sogo H, Kastman E, Lindeløv JK. (2019) 
@@ -681,8 +681,8 @@ def run(expInfo, thisExp, win, inputs, globalClock=None, thisSession=None):
         if iteration == 0:
             this_trial_embeddings = np.random.multivariate_normal(np.zeros(vec_size), np.eye(vec_size), size=pop_size)    
         else:
-        #    embeddings = all_embeddings[iteration - 1, :, :]
-            embeddings = pca.transform(np.loadtxt(f"{output_path}/generation_{iteration - 1:02}/embeddings_post.txt", delimiter=","))
+            embeddings = all_embeddings[iteration - 1, :, :]
+        #    embeddings = pca.transform(np.loadtxt(f"{output_path}/generation_{iteration - 1:02}/embeddings_post.txt", delimiter=","))
             this_trial_embeddings = new_generation(fitness, embeddings, iteration)
         
         # Concatenate new generation embeddings
