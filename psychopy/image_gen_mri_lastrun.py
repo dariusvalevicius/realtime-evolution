@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 This experiment was created using PsychoPy3 Experiment Builder (v2023.2.3),
-    on January 13, 2025, at 15:55
+    on January 14, 2025, at 08:13
 If you publish work using this script the most relevant publication is:
 
     Peirce J, Gray JR, Simpson S, MacAskill M, Höchenberger R, Sogo H, Kastman E, Lindeløv JK. (2019) 
@@ -159,7 +159,7 @@ def setupData(expInfo, dataDir=None):
     thisExp = data.ExperimentHandler(
         name=expName, version='',
         extraInfo=expInfo, runtimeInfo=None,
-        originPath='C:\\Users\\dariu\\Documents\\PhD\\ImageGeneration\\repo\\realtime-evolution\\image_gen_mri_lastrun.py',
+        originPath='C:\\Users\\dariu\\Documents\\PhD\\ImageGeneration\\repo\\realtime-evolution\\psychopy\\image_gen_mri_lastrun.py',
         savePickle=True, saveWideText=True,
         dataFileName=dataDir + os.sep + filename, sortColumns='time'
     )
@@ -210,7 +210,7 @@ def setupWindow(expInfo=None, win=None):
     if win is None:
         # if not given a window to setup, make one
         win = visual.Window(
-            size=[1536, 864], fullscr=False, screen=0,
+            size=[1536, 864], fullscr=True, screen=0,
             winType='pyglet', allowStencil=False,
             monitor='testMonitor', color=[0,0,0], colorSpace='rgb',
             backgroundImage='', backgroundFit='none',
@@ -227,7 +227,7 @@ def setupWindow(expInfo=None, win=None):
         win.backgroundImage = ''
         win.backgroundFit = 'none'
         win.units = 'height'
-    win.mouseVisible = True
+    win.mouseVisible = False
     win.hideMessage()
     return win
 
@@ -382,7 +382,10 @@ def run(expInfo, thisExp, win, inputs, globalClock=None, thisSession=None):
     ses = int(expInfo['session'])
     condition = expInfo['condition']
     
-    with open('config.json') as f:
+    #screen = int(expInfo['screen'])
+    
+    
+    with open('../config.json') as f:
         config = json.load(f)
         
     shared_drive_path = config["shared_drive_path"]
@@ -681,8 +684,8 @@ def run(expInfo, thisExp, win, inputs, globalClock=None, thisSession=None):
         if iteration == 0:
             this_trial_embeddings = np.random.multivariate_normal(np.zeros(vec_size), np.eye(vec_size), size=pop_size)    
         else:
-        #    embeddings = all_embeddings[iteration - 1, :, :]
-            embeddings = pca.transform(np.loadtxt(f"{output_path}/generation_{iteration - 1:02}/embeddings_post.txt", delimiter=","))
+            embeddings = all_embeddings[iteration - 1, :, :]
+        #    embeddings = pca.transform(np.loadtxt(f"{output_path}/generation_{iteration - 1:02}/embeddings_post.txt", delimiter=","))
             this_trial_embeddings = new_generation(fitness, embeddings, iteration)
         
         # Concatenate new generation embeddings
