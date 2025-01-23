@@ -49,6 +49,8 @@ def main():
     
     args = parser.parse_args()
 
+    print("MANAGER is starting...")
+
     participant = args.participant
     ses = args.session
     run = args.run
@@ -66,17 +68,16 @@ def main():
     clear_temp_files(shared_drive_path)
 
 
-    if condition == "brain":
+    if condition == 'brain':
         # Simulation
         if args.simulate:
             sim = subprocess.Popen(["python", "code/siemens_simulator.py", shared_drive_path])
             atexit.register(os.kill, sim.pid, signal.CTRL_C_EVENT)
             time.sleep(2)
 
-        if condition == "brain":
-            # Start processor subprocess
-            proc = subprocess.Popen(["python", "code/processor.py", shared_drive_path, str(participant)])
-            atexit.register(os.kill, proc.pid, signal.CTRL_C_EVENT)
+        # Start processor subprocess
+        proc = subprocess.Popen(["python", "code/processor.py", shared_drive_path, str(participant)])
+        atexit.register(os.kill, proc.pid, signal.CTRL_C_EVENT)
 
 
     # Start collector subprocess
@@ -90,10 +91,12 @@ def main():
         if poll is None:
             time.sleep(1)
         else:
-            print("Collector closed.")
+            print("COLLECTOR closed. Terminating all processes in 10 seconds...")
+            time.sleep(10)
             # Clear existing files, if any
             clear_temp_files(shared_drive_path)
             exit()
+            
 
     return None
 

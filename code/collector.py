@@ -1,7 +1,8 @@
 import torch
 import numpy as np
+import pandas as pd
+
 from diffusers import StableUnCLIPImg2ImgPipeline
-from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 import sys
 import os
 import time
@@ -19,6 +20,9 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.pipeline import Pipeline
+
+
+
 
 def generate_image(pipe, embedding, image_name, diffusion_steps=21):
     '''
@@ -50,17 +54,10 @@ def prep_model(model_path):
 
     return pipe
 
-def prep_vision_model(model_path):
-    # setting device on GPU if available, else CPU
-    # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    # print('Using device:', device)
-
-    vision_model = CLIPVisionModelWithProjection.from_pretrained(os.path.join(model_path, "image_encoder")).to('cuda')
-    processor = CLIPImageProcessor.from_pretrained(os.path.join(model_path, "feature_extractor"))
-
-    return vision_model, processor
-
 def get_embed(path, vision_model, processor):
+    '''
+    Gets the CLIP embeddings from an image file.
+    '''
     
     image = Image.open(path)
     inputs = processor(text=None, images=image, return_tensors="pt")
@@ -75,7 +72,7 @@ def get_embed(path, vision_model, processor):
     # print(image_features.size())
 
     return image_embeddings
-    
+
     
 def get_filtered_files(directory, start, end, pattern=r'^img_(\d{4}).nii.gz$'):
     '''
@@ -128,12 +125,14 @@ def get_niftis(dir, start_time, end_time, tr=0.867):
 
     while len(file_list) < (duration):
         print(f"Not enough images found. Waiting for {duration - len(file_list)} more images...")
-        time.sleep(1)
+        time.sleep(2)
         file_list = get_filtered_files(dir, start_tr, end_tr)
 
     file_list = [os.path.join(dir, file) for file in file_list]
 
-    return file_list
+    idx = np.arange(start_tr, end_tr + 1)
+
+    return file_list, idx
 
 
 def create_4d_img(file_names):
@@ -163,17 +162,14 @@ def create_4d_img(file_names):
 
     return new_img
 
-def get_scores(dir, onset_times, masker=None, model=None, method=None, target_class=None):
+def get_scores(dir, onset_times, masker, target):
     '''
     Evaluates a set of frames in order to get a list of predicted scores for the target.
         Inputs:
             dir: Aligned NifTI file directory.
             onset_times: List of onset times of images in one generation in seconds, relative to the start of the run.
             masker: NiftiMasker model to convert 4D data to a 2D matrix.
-            pipeline: PCA + Scaler pipeline to convert masked data into reduced matrix.
-            model: Logistic regression model for predicting scores from dimension-reduced data.
-            beta_map: Weight volume to be used for Pearson-type decoding.
-            method: One of ["logistic", "pearson"]. Specified what type of model is being used.
+            target: Weight vector to be used for Pearson-type decoding.
         Outputs:
             y_pred: Predicted scores on target measure.
     '''
@@ -182,13 +178,18 @@ def get_scores(dir, onset_times, masker=None, model=None, method=None, target_cl
     start_time = onset_times[0]
     end_time = onset_times[-1] + 8
 
-    list = get_niftis(dir, start_time, end_time)
+    list, idx = get_niftis(dir, start_time, end_time)
 
     img = create_4d_img(list)
     print(f"Image size: {img.shape}")
 
-    masked_img = masker.fit_transform(img)
+    # Get motion params for cleaning
+    motion_params = pd.read_csv(os.path.join(dir, "motion_params.tsv"), sep="\t").iloc[idx, :]
 
+    # Mask image
+    masked_img = masker.transform(img, confounds=motion_params)
+
+    # Get peak frames
     peak_frames = np.zeros((len(onset_times), masked_img.shape[1]))
     tr = 0.867
 
@@ -205,21 +206,13 @@ def get_scores(dir, onset_times, masker=None, model=None, method=None, target_cl
             print(f"NaNs found in row: {j}")
         peak_frames[j,:] = fmri_avg
 
+    y_pred = []
 
+    for i in range(peak_frames.shape[0]):
+        r_val = np.corrcoef(peak_frames[i,:], target)[0,1]
+        y_pred.append(r_val)
 
-    if method == "pipeline":
-
-        y_pred = model.predict_log_proba(peak_frames)[:,target_class]
-
-    elif method == "pearson":
-
-        y_pred = []
-
-        for i in range(peak_frames.shape[0]):
-            dot_product = np.dot(peak_frames[i,:], model)
-            y_pred.append(dot_product)
-
-        y_pred = np.array(y_pred)
+    y_pred = np.array(y_pred)
 
     return y_pred
 
@@ -240,6 +233,8 @@ if __name__ == "__main__":
     which it uses to produce a new set of images.
     '''
 
+    print("COLLECTOR is starting...")
+
     # Get arguments
     shared_drive_path = sys.argv[1]
     root_dir = sys.argv[2]
@@ -252,13 +247,14 @@ if __name__ == "__main__":
 
     model_path = config["unclip_model_path"]
     diffusion_steps = config["diffusion_steps"]
+    max_iters = config["max_iters"]
+    smoothing_fwhm = config["smoothing_fwhm"]
+    t_r = config["t_r"]
 
     # Prepare generator model
     pipe = prep_model(model_path)
-    # vision_model, processor = prep_vision_model(model_path)
     vision_model = pipe.image_encoder
     processor = pipe.feature_extractor
-
 
     embeddings_files_complete = []
     onset_files_complete = []
@@ -266,129 +262,94 @@ if __name__ == "__main__":
 
     if condition == "brain":
         # Load fMRI masker and target model
-        with open(f"{shared_drive_path}/models/sub-{participant:02}/masker.pkl", "rb") as f:
-            masker = pickle.load(f)
+        mask_img = nib.load(f"{shared_drive_path}/models/sub-{participant:02}/mask_img.nii.gz")
+        target_img = nib.load(f"{shared_drive_path}/models/sub-{participant:02}/{target}_img.nii.gz")
+        ref_img = nib.load(f"{shared_drive_path}/models/sub-{participant:02}/ref_img.nii.gz")
 
-        with open(f"{shared_drive_path}/models/sub-{participant:02}/{target}_model.pkl", "rb") as f:
-            model = pickle.load(f)
+        # Initialize masker
+        masker = NiftiMasker(
+            mask_img=mask_img,
+            t_r=t_r,
+            smoothing_fwhm=smoothing_fwhm,
+            standardize=True,
+            detrend=True
+        )
+
+        masker.fit(ref_img)
+        target_img_flat = masker.transform(target_img)
 
 
-    # ## Define random target class
-    # if isinstance(model, Pipeline):
-    #     target_class = np.random.randint(0,20)
-    #     with open(f"{root_dir}/target_class.txt", 'w') as f:
-    #         f.write(f"target_class\n{target_class}")
+    ## Start loop
+    for iter in range(max_iters):
 
+        # Wait for folder to appear
+        gen_folder = os.path.join(root_dir, f"generation_{iter:02}")
+        while not os.path.exists(gen_folder):
+            time.sleep(1)
 
-    while(True):
-    
-        ## Generator loop
+        
+        # Wait for embedding file to appear
+        embeddings_path = os.path.join(gen_folder, "embeddings.txt")
+        while not os.path.isfile(embeddings_path):
+            time.sleep(1)
 
-        embeddings_files = []
-        embeddings_paths = []
-
-        # Search for new embeddings files
-        for dirpath, dirnames, filenames in os.walk(root_dir): # Cleaner way to do this?
-            for filename in filenames:
-                if filename == "embeddings.txt":
-                    full_path = os.path.join(dirpath, filename)
-                    embeddings_paths.append(dirpath)
-                    embeddings_files.append(full_path)
-
-        difference_list = [file for file in embeddings_files if file not in embeddings_files_complete]
-
-        if len(difference_list) == 1:
-
-            output_path = embeddings_paths[-1]
-            
-            # time.sleep(1)
-            loaded = False
-            while not loaded:
-                try:
-                    embeddings = np.loadtxt(difference_list[0], delimiter=',')
-                    loaded = True
-                except:
-                    pass
-
-            embeddings_post = np.empty_like(embeddings)
-            finished = np.zeros(embeddings.shape[0])
-
-            for i in range(embeddings.shape[0]):
-
-                filename = os.path.join(output_path, f"img_{i:02}.png")
-                # Generate image
-                generate_image(pipe, embeddings[i,:], filename, diffusion_steps=diffusion_steps) ## Edit diffusion steps based on performance
-                # Read back embeddings
-                this_embedding_post = get_embed(filename, vision_model, processor)
-                embeddings_post[i,:] = this_embedding_post
-
-                # Set status to complete
-                finished[i] = 1
-                np.savetxt(f"{output_path}/status.txt", finished, delimiter=',')
-
-            # Save post embeddings
-            np.savetxt(f"{output_path}/embeddings_post.txt", embeddings_post, delimiter=',')
-
-            # Add to complete embeddings files
-            embeddings_files_complete.append(difference_list[0])
-
-        elif len(difference_list) > 1:
-            raise Exception("Too many embeddings files found!")
-        else:
-            pass
-            
-            
-        ## Evaluator loop            
-            onset_files = []
-            onset_paths = []
-
-            # Search for new embeddings files
-            for dirpath, dirnames, filenames in os.walk(root_dir):
-                for filename in filenames:
-                    if filename == "onset_times.txt":
-                        full_path = os.path.join(dirpath, filename)
-                        onset_paths.append(dirpath)
-                        onset_files.append(full_path)
-
-            difference_list = [file for file in onset_files if file not in onset_files_complete]
-
-            if len(difference_list) == 1:
-
-                print(f"Processing file: {difference_list[0]}")
-                output_path = onset_paths[-1]
+        # Check if file is written before loading
+        while True:
+            try:
+                with open(embeddings_path, 'rb') as _:
+                    _.close()
+                    break
+            except IOError:
                 time.sleep(1)
+        
+        embeddings = np.loadtxt(embeddings_path, delimiter=',')
 
-                onset_times = np.loadtxt(difference_list[0], delimiter=',')
-                print(onset_times)
+        embeddings_post = np.empty_like(embeddings)
+        finished = np.zeros(embeddings.shape[0])
+
+        for i in range(embeddings.shape[0]):
+
+            filename = os.path.join(gen_folder, f"img_{i:02}.png")
+            # Generate image
+            generate_image(pipe, embeddings[i,:], filename, diffusion_steps=diffusion_steps) ## Edit diffusion steps based on performance
+            # Read back embeddings
+            this_embedding_post = get_embed(filename, vision_model, processor)
+            embeddings_post[i,:] = this_embedding_post
+
+            # Set status to complete
+            finished[i] = 1
+            np.savetxt(os.path.join(gen_folder, "status.txt"), finished, delimiter=',')
+
+        # Save post embeddings
+        np.savetxt(os.path.join(gen_folder, "embeddings_post.txt"), embeddings_post, delimiter=',')
+            
+        # Wait for onsets file
+        onsets_path = os.path.join(gen_folder, "onset_times.txt")
+        while not os.path.isfile(onsets_path):
+            time.sleep(1)
+
+        # Check if file is written before loading
+        while True:
+            try:
+                with open(onsets_path, 'rb') as _:
+                    _.close()
+                    break
+            except IOError:
+                time.sleep(1)
+        
+        onset_times = np.loadtxt(onsets_path, delimiter=',')
+
+        if condition == "brain":
+
+            fitness = get_scores(nifti_dir, onset_times, masker=masker, target=target_img_flat)
+            np.savetxt(os.path.join(gen_folder, "fitness.txt"), fitness, delimiter=',')
+
+        else:
+            print("Condition is: ratings. No processing needed this time.")
+
+        print(f"COLLECTOR: Generation {iter} processing complete. Moving on...")
 
 
-                if condition == "brain":
-    
-                    if isinstance(model, np.ndarray):
-                        fitness = get_scores(nifti_dir, onset_times, masker=masker, model=model, method="pearson")
-                    # elif isinstance(model, Pipeline):
-                        # fitness = get_scores(nifti_dir, onset_times, masker=masker, model=model, method="pipeline", target_class=target_class)
-                    else:
-                        raise Exception("Invalid model type: Must be np.ndarray or Pipeline")
-
-                    np.savetxt(f"{output_path}/fitness.txt", fitness, delimiter=',')
-
-                else:
-                    print("Condition is: ratings. No processing needed this time.")
-
-                onset_files_complete.append(difference_list[0])
-                
-                if len(onset_files_complete) == 8:
-                    print("Run complete.")
-                    exit()
-
-            elif len(difference_list) > 1:
-                raise Exception("Too many onset files found!")
-            else:
-                pass
-
-        time.sleep(1)
-
-
+print("COLLECTOR finished processing. Closing...")
 
 

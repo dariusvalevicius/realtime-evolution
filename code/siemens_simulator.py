@@ -11,6 +11,7 @@ if __name__ == "__main__":
     This script simulates an MRI scanner by copying DCM files from a source directory
     to the 'dicom' folder where they will be read from by the realtime program.
     '''
+    print("SIMULATOR is starting...")
 
     shared_drive_path = sys.argv[1]
 
