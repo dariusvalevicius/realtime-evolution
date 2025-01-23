@@ -214,7 +214,7 @@ def get_scores(dir, onset_times, masker, target):
 
     y_pred = np.array(y_pred)
 
-    return y_pred
+    return y_pred, peak_frames
 
 
 if __name__ == "__main__":
@@ -340,9 +340,11 @@ if __name__ == "__main__":
         onset_times = np.loadtxt(onsets_path, delimiter=',')
 
         if condition == "brain":
-
-            fitness = get_scores(nifti_dir, onset_times, masker=masker, target=target_img_flat)
+            # Compute and save fitness scores
+            fitness, peak_frames = get_scores(nifti_dir, onset_times, masker=masker, target=target_img_flat)
             np.savetxt(os.path.join(gen_folder, "fitness.txt"), fitness, delimiter=',')
+            # Save computed trial responses
+            np.savetxt(os.path.join(gen_folder, "peak_frames.txt"), peak_frames, fmt='%.4f', delimiter=",")
 
         else:
             print("Condition is: ratings. No processing needed this time.")
